@@ -4,17 +4,27 @@
 // Flipkart/Snapdeal/Amazon for the same product to build a multi-platform comparison.
 // Returns prices + computed AI score + recommendation to the Android app.
 
-require_once '../../config/cors.php';
-require_once '../../config/database.php';
-require_once '../../helpers/auth.php';
-require_once '../../scrapers/BaseScraper.php';
-require_once '../../scrapers/AmazonScraper.php';
-require_once '../../scrapers/FlipkartScraper.php';
-require_once '../../scrapers/SnapdealScraper.php';
-require_once '../../scrapers/MyntraScraper.php';
-require_once '../../scrapers/PriceAggregatorScraper.php';
-require_once '../../scrapers/CrossPlatformScraper.php';
+require_once __DIR__ . '/../../config/cors.php';
+require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../helpers/auth.php';
+require_once __DIR__ . '/../../scrapers/BaseScraper.php';
+require_once __DIR__ . '/../../scrapers/AmazonScraper.php';
+require_once __DIR__ . '/../../scrapers/FlipkartScraper.php';
+require_once __DIR__ . '/../../scrapers/SnapdealScraper.php';
+require_once __DIR__ . '/../../scrapers/MyntraScraper.php';
+require_once __DIR__ . '/../../scrapers/PoorvikaScraper.php';
+require_once __DIR__ . '/../../scrapers/RelianceDigitalScraper.php';
+require_once __DIR__ . '/../../scrapers/iPlanetScraper.php';
+require_once __DIR__ . '/../../scrapers/VijaySalesScraper.php';
+require_once __DIR__ . '/../../scrapers/CromaScraper.php';
+require_once __DIR__ . '/../../scrapers/PriceAggregatorScraper.php';
+require_once __DIR__ . '/../../scrapers/CrossPlatformScraper.php';
 
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
+ini_set('memory_limit', '512M');
 set_time_limit(120);
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -42,6 +52,8 @@ $supported = [
     'flipkart' => 'flipkart',
     'snapdeal' => 'snapdeal',
     'myntra'   => 'myntra',
+    'poorvika' => 'poorvika',
+    'iplanet'  => 'iplanet',
 ];
 
 $host     = strtolower(parse_url($productUrl, PHP_URL_HOST) ?? '');
@@ -90,6 +102,8 @@ switch ($platform) {
     case 'flipkart': $scraper = new FlipkartScraper(); break;
     case 'snapdeal': $scraper = new SnapdealScraper(); break;
     case 'myntra':   $scraper = new MyntraScraper();   break;
+    case 'poorvika': $scraper = new PoorvikaScraper(); break;
+    case 'iplanet':  $scraper = new iPlanetScraper();  break;
 }
 $primary = $scraper->scrape($productUrl);
 
@@ -104,24 +118,39 @@ $logStmt = $db->prepare(
 if (!$primary['success']) {
     $errMsg = $primary['error'] ?? 'Scraper returned no data';
     $logStmt->execute([$user['user_id'], $productUrl, $_SERVER['REMOTE_ADDR'] ?? null, 0, $responseTimeMs, $errMsg]);
-    http_response_code(422);
-    echo json_encode(['success' => false, 'error' => $errMsg]);
-    exit;
+    // Don't exit! We still want to try cross-platform search if we can guess the name
+    error_log("[fetch_product] Primary scrape failed: $errMsg. Trying search fallback.");
+} else {
+    $logStmt->execute([$user['user_id'], $productUrl, $_SERVER['REMOTE_ADDR'] ?? null, 1, $responseTimeMs, null]);
 }
 
-$logStmt->execute([$user['user_id'], $productUrl, $_SERVER['REMOTE_ADDR'] ?? null, 1, $responseTimeMs, null]);
-
-$productName  = $primary['productName']  ?? 'Unknown Product';
+// Try to get product name from URL if scraper failed
+$productName  = $primary['productName']  ?? null;
+if (!$productName) {
+    // Guess from URL path
+    $path = parse_url($productUrl, PHP_URL_PATH);
+    $slug = trim($path, '/');
+    if (strpos($slug, 'dp/') !== false) {
+        $parts = explode('/', $slug);
+        $productName = str_replace('-', ' ', $parts[0]);
+    } else {
+        $productName = str_replace(['-', '_'], ' ', basename($path));
+    }
+}
+$productName = $productName ?: 'Unknown Product';
 $productImage = $primary['productImage'] ?? null;
 
 // Primary price entry
-$prices = [[
-    'platform'     => $primary['platform'],
-    'price'        => (float)$primary['price'],
-    'currency'     => $primary['currency']     ?? 'INR',
-    'availability' => $primary['availability'] ?? 'In Stock',
-    'link'         => $primary['link']         ?? $productUrl,
-]];
+$prices = [];
+if ($primary['success'] && isset($primary['price'])) {
+    $prices[] = [
+        'platform'     => $primary['platform'],
+        'price'        => (float)$primary['price'],
+        'currency'     => $primary['currency']     ?? 'INR',
+        'availability' => $primary['availability'] ?? 'In Stock',
+        'link'         => $primary['link']         ?? $productUrl,
+    ];
+}
 
 // ----- Cross-platform search -----
 // Primary: use price-comparison aggregators (MySmartPrice / 91mobiles)
@@ -149,6 +178,9 @@ try {
     }
 
     foreach ($extras as $ex) {
+        if (empty($productImage) && !empty($ex['image'])) {
+            $productImage = $ex['image'];
+        }
         if (!empty($ex['price']) && $ex['price'] >= 10) {
             $prices[] = [
                 'platform'     => $ex['platform'],
@@ -163,6 +195,8 @@ try {
     error_log('[fetch_product] cross-platform error: ' . $e->getMessage());
 }
 
+error_log('[fetch_product] Found ' . count($prices) . ' total price points.');
+
 // ----- Deduplicate by platform (keep lowest price per platform) -----
 $byPlatform = [];
 foreach ($prices as $pe) {
@@ -175,6 +209,13 @@ $prices = array_values($byPlatform);
 
 // ----- Sort ascending -----
 usort($prices, fn($a, $b) => $a['price'] <=> $b['price']);
+
+// ----- Calculation -----
+if (empty($prices)) {
+    http_response_code(404);
+    echo json_encode(['success' => false, 'error' => 'No pricing information found for this product.']);
+    exit;
+}
 
 $minPrice = $prices[0]['price'];
 $maxPrice = $prices[count($prices) - 1]['price'];

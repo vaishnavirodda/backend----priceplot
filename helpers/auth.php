@@ -7,7 +7,20 @@ require_once __DIR__ . '/../config/database.php';
  */
 function requireAuth(): array {
     $token = $_SERVER['HTTP_X_AUTH_TOKEN'] ?? '';
+    
+    // Fallback: search in all headers (case-insensitive)
+    if (empty($token) && function_exists('getallheaders')) {
+        $headers = getallheaders();
+        foreach ($headers as $name => $value) {
+            if (strtolower($name) === 'x-auth-token') {
+                $token = $value;
+                break;
+            }
+        }
+    }
+
     if (empty($token)) {
+        error_log("[auth] No token found in any header.");
         http_response_code(401);
         echo json_encode(['success' => false, 'error' => 'Authentication required']);
         exit;
@@ -19,6 +32,7 @@ function requireAuth(): array {
     $user = $stmt->fetch();
 
     if (!$user) {
+        error_log("[auth] Invalid or expired token");
         http_response_code(401);
         echo json_encode(['success' => false, 'error' => 'Invalid or expired token']);
         exit;

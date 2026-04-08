@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PricePlot Workspace</title>
+    <link rel="stylesheet" href="css/styles.css?v=2">
+</head>
+<body>
+    <div id="loading-overlay" class="d-none"><div class="spinner"></div></div>
+    <div id="toast-container"></div>
+
+    <div class="app-container">
+        <!-- Login Screen -->
+        <div id="login-screen" class="screen view-section d-none">
+            <div class="web-auth-box">
+                <h1 style="color: var(--nav-blue); text-align: center; font-size: 2rem;">PricePlot</h1>
+                <p style="text-align: center; color: var(--text-medium); margin-bottom: 32px;">Welcome Back to the Web Portal</p>
+                <form id="login-form">
+                    <input type="email" id="login-email" class="input-field" placeholder="Email" required>
+                    <input type="password" id="login-password" class="input-field" placeholder="Password" required>
+                    <button type="submit" class="btn-primary">Sign In</button>
+                </form>
+                <p class="auth-switch" data-target="register-screen">Don't have an account? Sign up</p>
+            </div>
+        </div>
+
+        <!-- Register Screen -->
+        <div id="register-screen" class="screen view-section d-none">
+            <div class="web-auth-box">
+                <h1 style="color: var(--nav-blue); text-align: center; font-size: 2rem;">Create Account</h1>
+                <form id="register-form">
+                    <input type="text" id="reg-username" class="input-field" placeholder="Username" required>
+                    <input type="email" id="reg-email" class="input-field" placeholder="Email" required>
+                    <input type="password" id="reg-password" class="input-field" placeholder="Password" required>
+                    <button type="submit" class="btn-primary">Sign Up</button>
+                </form>
+                <p class="auth-switch" data-target="login-screen">Already have an account? Sign in</p>
+            </div>
+        </div>
+
+        <!-- Main Desktop Dashboard Layout -->
+        <div id="main-screen" class="d-none">
+            
+            <!-- Top Navigation Bar -->
+            <nav class="web-navbar">
+                <div class="brand-logo">PricePlot Web</div>
+                <div class="nav-links">
+                    <div class="nav-item active" data-view="home-view">Home</div>
+                    <div class="nav-item" data-view="wishlist-view">Wishlist</div>
+                    <div class="nav-item" data-view="cart-view">Cart</div>
+                    <div class="nav-item" data-view="searches-view">Searches</div>
+                    <div class="nav-item" data-view="profile-view">Profile</div>
+                </div>
+            </nav>
+
+            <!-- Main Content Container -->
+            <main class="web-content-area">
+                
+                <!-- Home View -->
+                <div id="home-view" class="view-section">
+                    
+                    <!-- Web Hero Banner -->
+                    <div class="hero-banner">
+                        <div class="hero-content">
+                            <h1 id="greeting-text">Hello 👋</h1>
+                            <h2 style="margin-top:20px; font-size:2rem; font-weight:700;">Compare product prices across platforms</h2>
+                            <p style="font-size:1.1rem; opacity:0.9; margin-top:8px;">Paste any Amazon or Flipkart link to start tracking drops.</p>
+                            
+                            <div class="search-bar-wrapper">
+                                <input type="text" placeholder="Paste product link here..." class="hero-input" id="track-input">
+                                <button class="btn-orange hero-btn" id="track-btn">Track Prices →</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section-container">
+                        <div class="section-title">
+                            <h2>🔥 Flash Deals</h2>
+                        </div>
+                        <div id="deals-container" class="web-products-grid"></div>
+                    </div>
+                </div>
+
+                <!-- Product Detail View -->
+                <div id="product-view" class="view-section d-none section-container">
+                    <button class="btn-outline" style="width: auto; margin-bottom: 24px; padding: 10px 20px; border-color: var(--divider); color: var(--text-dark);" onclick="UI.showView('home-view')">← Back to Dashboard</button>
+                    <div id="product-details-container">
+                        <!-- Content injected via JS -->
+                    </div>
+                </div>
+
+                <!-- Cart View -->
+                <div id="cart-view" class="view-section d-none section-container">
+                    <div class="section-title"><h2>My Shopping Cart</h2></div>
+                    <div id="cart-container" class="web-products-grid"></div>
+                </div>
+
+                <!-- Wishlist View -->
+                <div id="wishlist-view" class="view-section d-none section-container">
+                    <div class="section-title"><h2>My Wishlist</h2></div>
+                    <div id="wishlist-container" class="web-products-grid"></div>
+                </div>
+
+                <!-- Searches View -->
+                <div id="searches-view" class="view-section d-none section-container">
+                    <div class="section-title"><h2>Recent Searches</h2></div>
+                    <div id="searches-container" class="web-products-grid"></div>
+                </div>
+
+                <!-- Profile View -->
+                <div id="profile-view" class="view-section d-none section-container">
+                    <div class="web-profile-card">
+                        <div class="avatar-circle">👤</div>
+                        <h2 id="profile-name">User Name</h2>
+                        <p id="profile-email">user@email.com</p>
+                        
+                        <div style="margin-top: 32px;">
+                            <button class="btn-outline logout-btn">Logout of Web Portal</button>
+                        </div>
+                    </div>
+                </div>
+
+            </main>
+        </div>
+        
+        <!-- Global Floating Action Button -->
+        <button id="global-fab" class="btn-primary" style="position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); width: 60px; height: 60px; border-radius: 50%; background: var(--orange-accent); font-size: 28px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 16px rgba(234, 88, 12, 0.4); z-index: 1000; transition: transform 0.2s; border: none; color: white; cursor: pointer;">
+            +
+        </button>
+
+        <!-- Add Product Dialog Modal -->
+        <div id="add-product-modal" class="d-none" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1500; display: flex; align-items: center; justify-content: center;">
+            <div style="background: white; border-radius: 16px; width: 90%; max-width: 400px; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+                <h3 style="font-size: 20px; color: var(--text-dark); text-align: center; margin-bottom: 8px;">Add Product</h3>
+                <p style="font-size: 13px; color: var(--text-medium); text-align: center; margin-bottom: 20px;">Paste a product URL to compare prices</p>
+                
+                <input type="text" id="modal-track-input" placeholder="http:// or https:// product link" style="width: 100%; padding: 12px; border: 1px solid var(--divider); border-radius: 8px; margin-bottom: 20px; font-size: 14px; box-sizing: border-box;">
+                
+                <div style="display: flex; gap: 12px;">
+                    <button class="btn-outline" id="modal-cancel-btn" style="flex: 1; padding: 12px; border-radius: 8px;">Cancel</button>
+                    <button class="btn-primary" id="modal-fetch-btn" style="flex: 1; background: var(--orange-accent); padding: 12px; border-radius: 8px;">Compare Prices</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="js/app.js?v=5"></script>
+</body>
+</html>

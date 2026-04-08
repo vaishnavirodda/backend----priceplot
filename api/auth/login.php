@@ -1,7 +1,7 @@
 <?php
 // api/auth/login.php
-require_once '../../config/cors.php';
-require_once '../../config/database.php';
+require_once __DIR__ . '/../../config/cors.php';
+require_once __DIR__ . '/../../config/database.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -30,8 +30,12 @@ if (!$user || !password_verify($password, $user['password_hash'])) {
     exit;
 }
 
-// Rotate auth token on each login
-$authToken = bin2hex(random_bytes(32));
+// Reuse existing token if available, otherwise generate new one
+$authToken = $user['auth_token'];
+if (empty($authToken)) {
+    $authToken = bin2hex(random_bytes(32));
+}
+
 $db->prepare('UPDATE users SET auth_token = ?, last_login = NOW() WHERE user_id = ?')
    ->execute([$authToken, $user['user_id']]);
 

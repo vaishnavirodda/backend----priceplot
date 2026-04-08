@@ -3,6 +3,11 @@
 // Searches Flipkart and Snapdeal for a given product name and returns price entries.
 // Used by fetch_product.php after the primary platform scraper runs.
 require_once __DIR__ . '/BaseScraper.php';
+require_once __DIR__ . '/VijaySalesScraper.php';
+require_once __DIR__ . '/RelianceDigitalScraper.php';
+require_once __DIR__ . '/PoorvikaScraper.php';
+require_once __DIR__ . '/iPlanetScraper.php';
+require_once __DIR__ . '/CromaScraper.php';
 
 class CrossPlatformScraper extends BaseScraper {
 
@@ -16,27 +21,101 @@ class CrossPlatformScraper extends BaseScraper {
     public function searchAll($productName, $skipPlatform = '') {
         $query   = $this->simplifyName($productName);
         $results = [];
-        error_log("[CrossPlatform] Searching for: $query (skip: $skipPlatform)");
+        error_log("[CrossPlatform] Searching for: '$query' (skip: '$skipPlatform')");
 
+        // 1. Direct Scrapers (High Priority)
+        error_log("[CrossPlatform] Starting Direct Scrapers...");
         if ($skipPlatform !== 'flipkart') {
             $fk = $this->searchFlipkart($query);
             if ($fk) $results[] = $fk;
         }
-        if ($skipPlatform !== 'snapdeal') {
-            $sd = $this->searchSnapdeal($query);
-            if ($sd) $results[] = $sd;
-        }
-        if (!in_array($skipPlatform, ['amazon', 'amzn'])) {
+        if (!in_array($skipPlatform, ['amazon', 'amzn', 'amazon.in'])) {
             $az = $this->searchAmazon($query);
             if ($az) $results[] = $az;
         }
-        if ($skipPlatform !== 'myntra') {
-            $mn = $this->searchMyntra($query);
-            if ($mn) $results[] = $mn;
+
+        // 2. Specific Scrapers (New additions)
+        if ($skipPlatform !== 'vijay sales') {
+            $vsScraper = new VijaySalesScraper();
+            $vsResults = $vsScraper->search($query);
+            if (!empty($vsResults)) {
+                $results = array_merge($results, $vsResults);
+            }
         }
 
-        error_log("[CrossPlatform] Found " . count($results) . " additional results");
+        if ($skipPlatform !== 'reliance digital') {
+            $rdScraper = new RelianceDigitalScraper();
+            $rdResults = $rdScraper->search($query);
+            if (!empty($rdResults)) {
+                $results = array_merge($results, $rdResults);
+            }
+        }
+
+        if ($skipPlatform !== 'poorvika') {
+            $poorvikaScraper = new PoorvikaScraper();
+            $poorvikaResults = $poorvikaScraper->search($query);
+            if (!empty($poorvikaResults)) {
+                $results = array_merge($results, $poorvikaResults);
+            }
+        }
+
+        if ($skipPlatform !== 'iplanet') {
+            $iPlanetScraper = new iPlanetScraper();
+            $iPlanetResults = $iPlanetScraper->search($query);
+            if (!empty($iPlanetResults)) {
+                $results = array_merge($results, $iPlanetResults);
+            }
+        }
+
+        if ($skipPlatform !== 'croma') {
+            $cromaScraper = new CromaScraper();
+            $cromaResults = $cromaScraper->search($query);
+            if (!empty($cromaResults)) {
+                $results = array_merge($results, $cromaResults);
+            }
+        }
+
+        // 3. Price Aggregators (MySmartPrice / 91mobiles)
+        // This brings in a lot of "Design Info", "iPlanet", "Croma", etc.
+        require_once __DIR__ . '/PriceAggregatorScraper.php';
+        $aggScraper = new PriceAggregatorScraper();
+        $aggResults = $aggScraper->searchAll($productName, $skipPlatform);
+        
+        if (!empty($aggResults)) {
+            $results = $this->mergeResults($results, $aggResults);
+        }
+
+        // 4. Snapdeal (Optional)
+        if ($skipPlatform !== 'snapdeal' && count($results) < 8) {
+            $sd = $this->searchSnapdeal($query);
+            if ($sd) $results[] = $sd;
+        }
+
+        error_log("[CrossPlatform] Found " . count($results) . " total real results");
+        
+        // Sort by price before returning
+        usort($results, function($a, $b) {
+            return $a['price'] <=> $b['price'];
+        });
+
         return $results;
+    }
+
+    private function mergeResults(array $base, array $incoming): array {
+        foreach ($incoming as $item) {
+            $plat = strtolower($item['platform']);
+            $found = false;
+            foreach ($base as $existing) {
+                if (strtolower($existing['platform']) === $plat) {
+                    $found = true;
+                    break;
+                }
+            }
+            if (!$found) {
+                $base[] = $item;
+            }
+        }
+        return $base;
     }
 
     // ------------------------------------------------------------------
@@ -182,16 +261,17 @@ class CrossPlatformScraper extends BaseScraper {
         $link  = $url;
 
         $priceText = $this->xpathFirst($xpath, [
-            "//span[contains(@class,'product-price')]",
-            "//p[contains(@class,'product-price')]",
+            "//span[contains(@class,'product-price') and contains(@class,'lfloat')]",
             "//span[@class='payBlkBig']",
-            "//span[contains(@class,'lfloat') and contains(@class,'product-price')]",
+            "//div[contains(@class,'product-price')]",
+            "//span[contains(@class,'product-price')]",
         ]);
         $price = $this->cleanPrice($priceText);
 
         $hrefText = $this->xpathAttr($xpath, [
             "//a[contains(@class,'dp-widget-link')]/@href",
             "//li[contains(@class,'product-tuple-listing')]//a/@href",
+            "//div[contains(@class,'product-tuple-image')]//a/@href",
         ]);
         if (!empty($hrefText) && strpos($hrefText, 'http') === 0) {
             $link = $hrefText;
@@ -201,7 +281,7 @@ class CrossPlatformScraper extends BaseScraper {
             $price = floatval(str_replace(',', '', $m[1]));
         }
 
-        if ($price <= 0) return null;
+        if ($price < 50) return null;
         error_log("[CrossPlatform/Snapdeal] price=$price");
         return [
             'platform'     => 'Snapdeal',
